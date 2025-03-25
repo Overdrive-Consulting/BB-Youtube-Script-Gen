@@ -146,19 +146,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
       setLoading(true);
+      
+      // Clear local state first
+      setSession(null);
+      setUser(null);
+      
+      // Force loading state to ensure UI updates
+      forceLoading.current = true;
+      
+      // Attempt to get current session first
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      
+      // If no session exists, just navigate to auth page
+      if (!currentSession) {
+        navigate('/auth');
+        return;
+      }
+      
+      // Perform the sign out
       const { error } = await supabase.auth.signOut();
       
       if (error) {
         throw error;
       }
       
+      // Clear any remaining state
+      isSigningIn.current = false;
+      forceLoading.current = false;
+      
+      // Navigate to auth page
       navigate('/auth');
       toast.success('Signed out successfully');
     } catch (error: any) {
-      toast.error(`Error signing out: ${error.message}`);
       console.error('Error signing out:', error);
+      toast.error(`Error signing out: ${error.message}`);
+      
+      // Force a navigation to auth page even if there's an error
+      navigate('/auth');
     } finally {
       setLoading(false);
+      forceLoading.current = false;
+      isSigningIn.current = false;
     }
   };
 
