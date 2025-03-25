@@ -146,43 +146,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
       setLoading(true);
-      
-      // Clear local state first
-      setSession(null);
-      setUser(null);
-      
-      // Force loading state to ensure UI updates
       forceLoading.current = true;
-      
-      // Attempt to get current session first
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      
-      // If no session exists, just navigate to auth page
-      if (!currentSession) {
-        navigate('/auth');
-        return;
-      }
-      
-      // Perform the sign out
+
+      // First, try to sign out from Supabase
       const { error } = await supabase.auth.signOut();
       
       if (error) {
         throw error;
       }
-      
-      // Clear any remaining state
+
+      // Then clear local state
+      setSession(null);
+      setUser(null);
       isSigningIn.current = false;
-      forceLoading.current = false;
       
-      // Navigate to auth page
-      navigate('/auth');
+      // Add a small delay to ensure state updates are processed
+      await delay(500);
+      
+      // Use replace: true to prevent back navigation
+      navigate('/auth', { replace: true });
       toast.success('Signed out successfully');
     } catch (error: any) {
       console.error('Error signing out:', error);
-      toast.error(`Error signing out: ${error.message}`);
       
-      // Force a navigation to auth page even if there's an error
-      navigate('/auth');
+      // If we get a session missing error, force clear everything
+      if (error.message?.includes('Auth session missing')) {
+        // Force clear the local state
+        setSession(null);
+        setUser(null);
+        navigate('/auth', { replace: true });
+        toast.success('Signed out successfully');
+      } else {
+        toast.error(`Error signing out: ${error.message}`);
+      }
     } finally {
       setLoading(false);
       forceLoading.current = false;
