@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Mail, Lock, Loader2, User } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -7,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import LoadingScreen from '@/components/LoadingScreen';
 
 const Auth: React.FC = () => {
   const { signIn, signUp, loading, user } = useAuth();
@@ -14,20 +14,42 @@ const Auth: React.FC = () => {
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   
   // If user is already logged in, redirect to homepage
   if (user) {
     return <Navigate to="/" replace />;
   }
 
+  // Show the loading screen if we're authenticating or the auth context is loading
+  if (isAuthenticating || loading) {
+    return <LoadingScreen />;
+  }
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    await signIn(email, password);
+    setIsAuthenticating(true);
+    try {
+      // Don't await here - we want to let the authentication process run
+      // without blocking, but keep isAuthenticating true until redirect
+      signIn(email, password);
+      // Don't reset isAuthenticating - when successful, redirect will unmount this component
+    } catch (error) {
+      // Only reset if there's an error
+      setIsAuthenticating(false);
+    }
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    await signUp(email, password, firstName, lastName);
+    setIsAuthenticating(true);
+    try {
+      // Don't await here to allow the loading screen to stay visible
+      signUp(email, password, firstName, lastName);
+      // Don't reset isAuthenticating - when successful, redirect will unmount this component
+    } catch (error) {
+      setIsAuthenticating(false);
+    }
   };
   
   return (
@@ -78,8 +100,8 @@ const Auth: React.FC = () => {
                 </CardContent>
                 
                 <CardFooter>
-                  <Button className="w-full" type="submit" disabled={loading}>
-                    {loading ? (
+                  <Button className="w-full" type="submit" disabled={loading || isAuthenticating}>
+                    {loading || isAuthenticating ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Signing In...
@@ -155,8 +177,8 @@ const Auth: React.FC = () => {
                 </CardContent>
                 
                 <CardFooter>
-                  <Button className="w-full" type="submit" disabled={loading}>
-                    {loading ? (
+                  <Button className="w-full" type="submit" disabled={loading || isAuthenticating}>
+                    {loading || isAuthenticating ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Creating Account...

@@ -1,8 +1,11 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+
+// Utility function to create a delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 interface AuthContextProps {
   session: Session | null;
@@ -20,19 +23,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const navigate = useNavigate();
+  
+  // Ref to track if we're currently in the signin process
+  const isSigningIn = useRef(false);
+  // Ref to track forced loading (for showing loading screen)
+  const forceLoading = useRef(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const initializeAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
-    });
+    };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    initializeAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       console.log("Auth state changed:", _event, session?.user?.id);
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
+      
+      // Don't immediately turn off loading if we're in signin process
+      // This prevents the loading state from being reset before our delay completes
+      if (isSigningIn.current || forceLoading.current) {
+        console.log("Keeping loading state true because signin is in progress");
+        setSession(session);
+        setUser(session?.user ?? null);
+        // Don't set loading to false here
+      } else {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+      }
     });
 
     return () => {
@@ -43,18 +64,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      isSigningIn.current = true;
+      forceLoading.current = true;
+      
+      // Show loading state for minimum 1 second to avoid flickering
+      const authPromise = supabase.auth.signInWithPassword({ email, password });
+      const delayPromise = delay(1000);
+      
+      // Wait for both promises to complete
+      const [authResult] = await Promise.all([authPromise, delayPromise]);
+      const { error } = authResult;
       
       if (error) {
         throw error;
       }
       
+      // Add a moderate delay for loading experience (5 seconds)
+      console.log("Authentication successful, showing loader for 5 seconds");
+      await delay(5000);
+      
+      // Navigate to homepage
       navigate('/');
       toast.success('Signed in successfully');
+      
+      // Add an additional delay before completing the process
+      // This ensures the loading screen stays visible during transition
+      await delay(2000);
     } catch (error: any) {
       toast.error(`Error signing in: ${error.message}`);
       console.error('Error signing in:', error);
     } finally {
+      // Always clean up our refs and loading state
+      isSigningIn.current = false;
+      forceLoading.current = false;
       setLoading(false);
     }
   };
@@ -62,7 +104,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUp = async (email: string, password: string, firstName?: string, lastName?: string) => {
     try {
       setLoading(true);
-      const { error } = await supabase.auth.signUp({ 
+      isSigningIn.current = true;
+      forceLoading.current = true;
+      
+      // Show loading state for minimum 1 second to avoid flickering
+      const authPromise = supabase.auth.signUp({ 
         email, 
         password,
         options: {
@@ -72,16 +118,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       });
+      const delayPromise = delay(1000);
+      
+      // Wait for both promises to complete
+      const [authResult] = await Promise.all([authPromise, delayPromise]);
+      const { error } = authResult;
       
       if (error) {
         throw error;
       }
+      
+      // Add a moderate delay for loading experience (5 seconds)
+      console.log("Sign up successful, showing loader for 5 seconds");
+      await delay(5000);
       
       toast.success('Signed up successfully!');
     } catch (error: any) {
       toast.error(`Error signing up: ${error.message}`);
       console.error('Error signing up:', error);
     } finally {
+      isSigningIn.current = false;
+      forceLoading.current = false;
       setLoading(false);
     }
   };

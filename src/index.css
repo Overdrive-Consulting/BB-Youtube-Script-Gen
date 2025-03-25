@@ -173,6 +173,25 @@
   transition: opacity 300ms, transform 300ms;
 }
 
+@keyframes progress {
+  0% {
+    width: 0%;
+    opacity: 1;
+  }
+  50% {
+    width: 70%;
+    opacity: 0.5;
+  }
+  100% {
+    width: 100%;
+    opacity: 0;
+  }
+}
+
+.animate-progress {
+  animation: progress 3s ease-in-out infinite;
+}
+
 /* Layouts */
 #root {
   width: 100%;
