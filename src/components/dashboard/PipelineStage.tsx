@@ -2,55 +2,67 @@ import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Trash2, Wand2, ExternalLink, Clock, ArrowRight } from 'lucide-react';
+import { Trash2, Wand2, ExternalLink, Clock, ArrowRight, Loader2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import IconRenderer from '@/components/IconRenderer';
 import { ScriptIdea } from '@/types/scriptPipeline';
 
 interface PipelineStageProps {
-  stageId: string;
-  stageLabel: string;
+  stage: {
+    id: string;
+    label: string;
+    dbStatus: string;
+  };
   ideas: ScriptIdea[];
   onDragStart: (ideaId: string) => void;
-  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver: (e: React.DragEvent<HTMLDivElement>, stageId: string) => void;
   onDrop: (e: React.DragEvent<HTMLDivElement>, stageId: string) => void;
   onEditIdea: (idea: ScriptIdea) => void;
   onDeleteInitiate: (id: string, event: React.MouseEvent) => void;
   onGenerateScript: (idea: ScriptIdea, event: React.MouseEvent) => void;
+  generatingScripts?: Set<string>;
+  generatingIdeas?: {
+    pending: boolean;
+    toastId?: string;
+  };
 }
 
 const PipelineStage: React.FC<PipelineStageProps> = ({
-  stageId,
-  stageLabel,
+  stage,
   ideas,
   onDragStart,
   onDragOver,
   onDrop,
   onEditIdea,
   onDeleteInitiate,
-  onGenerateScript
+  onGenerateScript,
+  generatingScripts = new Set(),
+  generatingIdeas = { pending: false }
 }) => {
-  const iconName = stageId === 'idea' ? 'PenLine' : 
-                  stageId === 'generated' ? 'Sparkles' : 
-                  stageId === 'reviewed' ? 'CheckCircle' : 'Clock';
+  const iconName = stage.id === 'idea' ? 'PenLine' : 
+                  stage.id === 'generated' ? 'Sparkles' : 
+                  stage.id === 'reviewed' ? 'CheckCircle' : 'Clock';
   
-  const stageColor = stageId === 'idea' ? 'bg-green-50 text-green-600 border-green-200' : 
-                    stageId === 'generated' ? 'bg-blue-50 text-blue-600 border-blue-200' : 
-                    stageId === 'reviewed' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
+  const stageColor = stage.id === 'idea' ? 'bg-green-50 text-green-600 border-green-200' : 
+                    stage.id === 'generated' ? 'bg-blue-50 text-blue-600 border-blue-200' : 
+                    stage.id === 'reviewed' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
                     'bg-purple-50 text-purple-600 border-purple-200';
 
-  const containerBg = stageId === 'idea' ? 'bg-green-100/50' : 
-                     stageId === 'generated' ? 'bg-blue-100/50' : 
-                     stageId === 'reviewed' ? 'bg-amber-100/50' : 
+  const containerBg = stage.id === 'idea' ? 'bg-green-100/50' : 
+                     stage.id === 'generated' ? 'bg-blue-100/50' : 
+                     stage.id === 'reviewed' ? 'bg-amber-100/50' : 
                      'bg-purple-100/50';
 
   // Render a card based on its status
   const renderCard = (idea: ScriptIdea) => {
+    const isGeneratingScript = generatingScripts.has(idea.id);
+    const isGeneratingIdea = generatingIdeas.pending && idea.status === 'Idea Generation';
+
     // Helper for formatting the audience information
     const formatAudience = () => {
       if (!idea.target_audiences && !idea.age_group && !idea.gender) return null;
       
-      if (stageId === 'idea') {
+      if (stage.id === 'idea') {
         // For Idea Submitted, show audience as simple text
         const text = idea.target_audiences || '';
         return text ? `Audience: ${text}` : null;
@@ -79,7 +91,7 @@ const PipelineStage: React.FC<PipelineStageProps> = ({
       
       // If it's just a number, add 'minutes'
       if (!isNaN(Number(duration))) {
-        return `${duration} minutes`;
+        return `${duration} mins`;
       }
       
       return duration;
@@ -87,7 +99,7 @@ const PipelineStage: React.FC<PipelineStageProps> = ({
 
     const renderCardContent = () => {
       // Different content for different stages
-      if (stageId === 'idea') {
+      if (stage.id === 'idea') {
         return (
           <>
             {/* Thumbnail preview */}
@@ -138,15 +150,48 @@ const PipelineStage: React.FC<PipelineStageProps> = ({
               </Button>
               
               <div className="flex gap-1">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={e => onGenerateScript(idea, e)} 
-                  className="text-xs hover:bg-gray-50"
-                >
-                  <Wand2 className="h-3.5 w-3.5 mr-1" />
-                  Generate
-                </Button>
+                {idea.status === 'Idea Submitted' ? (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={e => onGenerateScript(idea, e)} 
+                    className="text-xs hover:bg-gray-50"
+                    disabled={isGeneratingScript}
+                  >
+                    {isGeneratingScript ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="h-3.5 w-3.5 mr-1" />
+                        Generate
+                      </>
+                    )}
+                  </Button>
+                ) : isGeneratingIdea ? (
+                  <div className="flex items-center text-xs text-blue-600">
+                    <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    Generating Idea...
+                  </div>
+                ) : idea.generated_script_link ? (
+                  <a 
+                    href={idea.generated_script_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      className="text-xs flex items-center gap-1"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      View Script
+                    </Button>
+                  </a>
+                ) : null}
               </div>
             </div>
           </>
@@ -233,7 +278,9 @@ const PipelineStage: React.FC<PipelineStageProps> = ({
     return (
       <Card 
         key={`${idea.id}-${idea.generated_script_link || ''}-${idea.generated_thumbnail || ''}`} 
-        className="idea-card cursor-pointer hover:shadow-md transition-all overflow-hidden bg-white"
+        className={`cursor-pointer hover:shadow-md transition-all overflow-hidden ${
+          isGeneratingScript || isGeneratingIdea ? 'bg-blue-50/50' : 'bg-white'
+        }`}
         draggable 
         onDragStart={() => onDragStart(idea.id)} 
         onClick={() => onEditIdea(idea)}
@@ -249,7 +296,7 @@ const PipelineStage: React.FC<PipelineStageProps> = ({
     <div className="space-y-4">
       <div className={`flex items-center gap-2 p-3 rounded-lg ${stageColor}`}>
         <IconRenderer iconName={iconName as any} className="h-5 w-5" />
-        <h3 className="font-medium">{stageLabel}</h3>
+        <h3 className="font-medium">{stage.label}</h3>
         <Badge variant="outline" className="ml-auto">
           {ideas.length} items
         </Badge>
@@ -257,8 +304,8 @@ const PipelineStage: React.FC<PipelineStageProps> = ({
       
       <div 
         className={`space-y-3 min-h-[200px] p-2 rounded-lg border border-dashed ${containerBg}`}
-        onDragOver={onDragOver} 
-        onDrop={e => onDrop(e, stageId)}
+        onDragOver={e => onDragOver(e, stage.id)} 
+        onDrop={e => onDrop(e, stage.id)}
       >
         <ScrollArea className="h-[calc(100vh-330px)]">
           <div className="p-2 space-y-4">

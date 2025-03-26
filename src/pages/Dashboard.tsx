@@ -17,6 +17,50 @@ import DeleteAlertDialog from '@/components/dashboard/DeleteAlertDialog';
 import DashboardHeader from '@/components/dashboard/DashboardHeader';
 import GenerateIdeaDialog from '@/components/dashboard/GenerateIdeaDialog';
 
+// Add loading phases configuration
+const IDEA_GENERATION_PHASES = [
+  { message: "Analyzing channel content...", duration: 5000 },
+  { message: "Extracting key themes...", duration: 5000 },
+  { message: "Crafting unique idea...", duration: 5000 }
+];
+
+const SCRIPT_GENERATION_PHASES = [
+  { message: "Analyzing reference content...", duration: 20000 },
+  { message: "Developing narrative structure...", duration: 20000 },
+  { message: "Writing detailed script...", duration: 20000 },
+  { message: "Finalizing and formatting...", duration: 20000 }
+];
+
+// Add a CountdownTimer component at the top of the file
+const CountdownTimer: React.FC<{ seconds: number }> = ({ seconds }) => {
+  const [timeLeft, setTimeLeft] = useState(seconds);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeLeft(prev => Math.max(0, prev - 1));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-1 mt-1 w-full">
+      <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+        <div 
+          className="bg-blue-500 h-1.5 rounded-full transition-all duration-1000"
+          style={{ 
+            width: `${(timeLeft / seconds) * 100}%`,
+            transform: 'translateX(0)' // Ensure the bar starts from the left
+          }}
+        />
+      </div>
+      <div className="text-xs text-gray-500">
+        {timeLeft}s remaining...
+      </div>
+    </div>
+  );
+};
+
 const Dashboard: React.FC = () => {
   // Fetch script ideas and accounts
   const {
@@ -89,24 +133,31 @@ const Dashboard: React.FC = () => {
 
   // Track items that are generating scripts and ideas
   const [generatingScripts, setGeneratingScripts] = useState<Set<string>>(new Set());
-  const [generatingIdeas, setGeneratingIdeas] = useState<Set<string>>(new Set());
+  const [generatingIdeas, setGeneratingIdeas] = useState<{
+    pending: boolean;
+    toastId?: string;
+  }>({
+    pending: false
+  });
 
   // Polling mechanism to check for updates on generating items
   useEffect(() => {
     // Don't poll if no items are generating
-    if (generatingScripts.size === 0 && generatingIdeas.size === 0) return;
+    if (generatingScripts.size === 0 && !generatingIdeas.pending) return;
     
-    console.log(`Polling for ${generatingScripts.size} generating scripts and ${generatingIdeas.size} generating ideas`);
+    console.log(`Polling for ${generatingScripts.size} generating scripts and ${generatingIdeas.pending ? 'pending idea' : 'no ideas'}`);
     
     // Function to check for updates
     const checkForUpdates = async () => {
       try {
         // For script updates
         if (generatingScripts.size > 0) {
+          console.log('Checking for script updates...', Array.from(generatingScripts));
           const { data: scriptData, error: scriptError } = await supabase
             .from('video_generator_script_pipeline')
             .select('*')
-            .in('id', Array.from(generatingScripts));
+            .in('id', Array.from(generatingScripts))
+            .eq('status', 'Content Generated');
           
           if (scriptError) {
             console.error('Error checking for script updates:', scriptError);
@@ -114,32 +165,32 @@ const Dashboard: React.FC = () => {
           }
           
           // Check for completed scripts
-          const completedScripts = new Set<string>();
           scriptData?.forEach(item => {
-            if (item.generated_script_link) {
-              completedScripts.add(item.id);
+            console.log('Checking script:', item.id, item.status, item.generated_script_link);
+            if (item.status === 'Content Generated' && item.generated_script_link) {
+              // Remove from generating scripts
+              setGeneratingScripts(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(item.id);
+                return newSet;
+              });
+              // Show success message
               toast.success(`Script for "${item.title}" is now ready!`);
+              // Force a refresh of the script ideas data
+              queryClient.invalidateQueries({ queryKey: ['scriptIdeas'] });
             }
           });
-          
-          // Remove completed scripts from tracking
-          if (completedScripts.size > 0) {
-            setGeneratingScripts(prev => {
-              const newSet = new Set(prev);
-              completedScripts.forEach(id => newSet.delete(id));
-              return newSet;
-            });
-          }
         }
 
-        // For idea updates - check for new records with status "Idea Generation"
-        if (generatingIdeas.size > 0) {
+        // For idea updates - check for new records with status "Idea Submitted"
+        if (generatingIdeas.pending) {
+          console.log('Checking for new ideas...');
           const { data: ideaData, error: ideaError } = await supabase
             .from('video_generator_script_pipeline')
             .select('*')
-            .eq('status', 'Idea Generation')
+            .eq('status', 'Idea Submitted')  // Changed from 'Idea Generation' to 'Idea Submitted'
             .order('created_at', { ascending: false })
-            .limit(10); // Limit to recent records
+            .limit(5);  // Limit to most recent ideas
           
           if (ideaError) {
             console.error('Error checking for idea updates:', ideaError);
@@ -148,19 +199,28 @@ const Dashboard: React.FC = () => {
           
           // Check for completed ideas
           ideaData?.forEach(item => {
-            if (item.title && item.description) {
+            console.log('Checking idea:', item.id, item.status, item.title);
+            // Check if this is a newly created idea (within last minute)
+            const createdAt = new Date(item.created_at);
+            const isRecent = (Date.now() - createdAt.getTime()) < 60000; // Within last minute
+
+            if (isRecent && item.title && item.description) {
+              // Dismiss the specific toast we've been tracking
+              if (generatingIdeas.toastId) {
+                toast.dismiss(generatingIdeas.toastId);
+              }
+              // Show success message
               toast.success(`New idea "${item.title}" has been generated!`);
-              setGeneratingIdeas(prev => {
-                const newSet = new Set(prev);
-                newSet.delete('pending'); // Remove the pending flag
-                return newSet;
+              // Reset generating ideas state
+              setGeneratingIdeas({
+                pending: false,
+                toastId: undefined
               });
+              // Force a refresh of the script ideas data
+              queryClient.invalidateQueries({ queryKey: ['scriptIdeas'] });
             }
           });
         }
-        
-        // Refresh the script ideas data if any updates were found
-        queryClient.invalidateQueries({ queryKey: ['scriptIdeas'] });
       } catch (err) {
         console.error('Error in polling mechanism:', err);
       }
@@ -168,6 +228,9 @@ const Dashboard: React.FC = () => {
     
     // Set up polling interval - check every 5 seconds
     const intervalId = setInterval(checkForUpdates, 5000);
+    
+    // Run an initial check immediately
+    checkForUpdates();
     
     // Cleanup function
     return () => clearInterval(intervalId);
@@ -235,6 +298,34 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  // Function to show phased loading toast
+  const showPhasedLoadingToast = (phases: typeof IDEA_GENERATION_PHASES, toastId: string) => {
+    let currentPhase = 0;
+    
+    // Show initial toast
+    toast.loading(phases[0].message, {
+      id: toastId,
+      duration: Infinity // Keep the toast until we dismiss it
+    });
+
+    // Function to update toast with next phase
+    const updateToast = () => {
+      currentPhase++;
+      if (currentPhase < phases.length) {
+        toast.loading(phases[currentPhase].message, {
+          id: toastId
+        });
+      }
+    };
+
+    // Schedule updates for each phase
+    phases.forEach((phase, index) => {
+      if (index < phases.length - 1) {
+        setTimeout(updateToast, phase.duration);
+      }
+    });
+  };
+
   // Handle adding a new idea
   const handleAddIdea = (newIdea: Partial<ScriptIdea>) => {
     if (!newIdea.title || !newIdea.account) {
@@ -255,55 +346,103 @@ const Dashboard: React.FC = () => {
   // Handle generating an idea with AI
   const handleGenerateIdea = async (payloadString: string) => {
     const webhookUrl = "https://hook.us1.make.com/sdaoiwstw6czw7abruthp85qolcmfavq";
+    const toastId = 'idea-generation-' + Date.now();
 
-    toast.promise(
-      (async () => {
-        try {
-          // Parse the payload
-          const payload = JSON.parse(payloadString);
+    try {
+      // Parse the payload
+      const payload = JSON.parse(payloadString);
 
-          // Add a pending flag to indicate we're waiting for a new idea
-          setGeneratingIdeas(prev => new Set(prev).add('pending'));
+      // Add a pending flag and toastId to indicate we're waiting for a new idea
+      setGeneratingIdeas({
+        pending: true,
+        toastId: toastId
+      });
 
-          // Send the webhook request with all account details
-          const response = await fetch(webhookUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-          });
+      // Show phased loading toast for idea generation (15s total)
+      const phases = [
+        { message: "Analyzing channel content...", duration: 5000 },
+        { message: "Extracting key themes...", duration: 5000 },
+        { message: "Crafting unique idea...", duration: 5000 }
+      ];
 
-          if (!response.ok) {
-            throw new Error('Failed to send request to webhook');
-          }
+      // Total duration in seconds
+      const totalDurationSeconds = phases.reduce((sum, phase) => sum + phase.duration, 0) / 1000;
 
-          setGenerateDialogOpen(false); // Close the dialog
-          return 'Idea generation started. You will be notified when it completes.';
-        } catch (error) {
-          console.error('Error triggering idea generation:', error);
-          // Remove the pending flag if there's an error
-          setGeneratingIdeas(prev => {
-            const newSet = new Set(prev);
-            newSet.delete('pending');
-            return newSet;
-          });
-          throw new Error('Failed to start idea generation');
+      // Show initial toast with countdown
+      toast.loading(
+        <div className="w-full">
+          {phases[0].message}
+          <CountdownTimer seconds={totalDurationSeconds} />
+        </div>,
+        {
+          id: toastId,
+          duration: Infinity
         }
-      })(),
-      {
-        loading: 'Starting idea generation...',
-        success: (message) => message,
-        error: 'Failed to start idea generation'
+      );
+
+      // Function to update toast with next phase
+      const updateToast = (index: number, secondsLeft: number) => {
+        if (index < phases.length) {
+          toast.loading(
+            <div className="w-full">
+              {phases[index].message}
+              <CountdownTimer seconds={secondsLeft} />
+            </div>,
+            {
+              id: toastId
+            }
+          );
+        }
+      };
+
+      // Schedule updates for each phase
+      phases.forEach((phase, index) => {
+        if (index > 0) {
+          const timeUntilPhase = phases.slice(0, index).reduce((sum, p) => sum + p.duration, 0);
+          const secondsLeftAtPhase = totalDurationSeconds - (timeUntilPhase / 1000);
+          setTimeout(() => updateToast(index, secondsLeftAtPhase), timeUntilPhase);
+        }
+      });
+
+      // Set a timeout to dismiss the toast after all phases complete (15 seconds)
+      setTimeout(() => {
+        toast.dismiss(toastId);
+      }, totalDurationSeconds * 1000);
+
+      // Send the webhook request with all account details
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send request to webhook');
       }
-    );
+
+      setGenerateDialogOpen(false);
+      
+    } catch (error) {
+      console.error('Error triggering idea generation:', error);
+      // Remove the pending flag if there's an error
+      setGeneratingIdeas({
+        pending: false,
+        toastId: undefined
+      });
+      // Dismiss the loading toast and show error
+      toast.dismiss(toastId);
+      toast.error('Failed to start idea generation');
+    }
   };
 
-  // Handle generating script with AI - modified to use new state
+  // Handle generating script with AI
   const handleGenerateScript = async (idea: ScriptIdea, event: React.MouseEvent) => {
-    event.stopPropagation(); // Prevent card click
+    event.stopPropagation();
+    const toastId = 'script-generation-' + idea.id;
 
-    toast.promise((async () => {
+    try {
       // First send the data to the webhook
       const webhookSuccess = await sendToWebhook(idea);
       if (!webhookSuccess) {
@@ -313,18 +452,68 @@ const Dashboard: React.FC = () => {
       // Add this item to the set of generating scripts
       setGeneratingScripts(prev => new Set(prev).add(idea.id));
 
-      // Only update the status to "Content Generated"
+      // Total duration in seconds (1 minute 20 seconds)
+      const totalDurationSeconds = 80;
+
+      // Show initial toast with countdown
+      toast.loading(
+        <div className="w-full">
+          {SCRIPT_GENERATION_PHASES[0].message}
+          <CountdownTimer seconds={totalDurationSeconds} />
+        </div>,
+        {
+          id: toastId,
+          duration: Infinity
+        }
+      );
+
+      // Function to update toast with next phase
+      const updateToast = (index: number, secondsLeft: number) => {
+        if (index < SCRIPT_GENERATION_PHASES.length) {
+          toast.loading(
+            <div className="w-full">
+              {SCRIPT_GENERATION_PHASES[index].message}
+              <CountdownTimer seconds={secondsLeft} />
+            </div>,
+            {
+              id: toastId
+            }
+          );
+        }
+      };
+
+      // Schedule updates for each phase
+      SCRIPT_GENERATION_PHASES.forEach((phase, index) => {
+        if (index > 0) {
+          const timeUntilPhase = SCRIPT_GENERATION_PHASES.slice(0, index).reduce((sum, p) => sum + p.duration, 0);
+          const secondsLeftAtPhase = totalDurationSeconds - (timeUntilPhase / 1000);
+          setTimeout(() => updateToast(index, secondsLeftAtPhase), timeUntilPhase);
+        }
+      });
+
+      // Set a timeout to dismiss the toast after all phases complete (80 seconds)
+      setTimeout(() => {
+        toast.dismiss(toastId);
+      }, totalDurationSeconds * 1000);
+
+      // Update the status to "Content Generated"
       await updateScriptIdea.mutateAsync({
         id: idea.id,
-        status: 'Content Generated' // Only update the status
+        status: 'Content Generated'
       });
       
-      return 'Script request sent successfully. You will be notified when it completes.';
-    })(), {
-      loading: 'Processing script generation request...',
-      success: message => message,
-      error: 'Failed to send script generation request'
-    });
+    } catch (error) {
+      console.error('Error generating script:', error);
+      // Remove from generating scripts if there's an error
+      setGeneratingScripts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(idea.id);
+        return newSet;
+      });
+      // Dismiss the loading toast and show error
+      toast.dismiss(toastId);
+      toast.error('Failed to generate script');
+    }
   };
 
   // Handle editing an idea
@@ -439,6 +628,8 @@ const Dashboard: React.FC = () => {
             onEditIdea={handleEditIdea}
             onDeleteInitiate={handleDeleteInitiate}
             onGenerateScript={handleGenerateScript}
+            generatingScripts={generatingScripts}
+            generatingIdeas={generatingIdeas}
           />
         </TabsContent>
         
@@ -448,6 +639,8 @@ const Dashboard: React.FC = () => {
             onEditIdea={handleEditIdea}
             onDeleteInitiate={handleDeleteInitiate}
             onGenerateScript={handleGenerateScript}
+            generatingScripts={generatingScripts}
+            generatingIdeas={generatingIdeas}
           />
         </TabsContent>
       </Tabs>

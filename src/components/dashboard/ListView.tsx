@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PIPELINE_STAGES, ScriptIdea } from '@/types/scriptPipeline';
-import { PenLine, Trash2, Wand2, ExternalLink, Clock } from 'lucide-react';
+import { PenLine, Trash2, Wand2, ExternalLink, Clock, Loader2 } from 'lucide-react';
 import IconRenderer from '@/components/IconRenderer';
 import ListViewFilters from './ListViewFilters';
 
@@ -12,13 +12,20 @@ interface ListViewProps {
   onEditIdea: (idea: ScriptIdea) => void;
   onDeleteInitiate: (id: string, event: React.MouseEvent) => void;
   onGenerateScript: (idea: ScriptIdea, event: React.MouseEvent) => void;
+  generatingScripts?: Set<string>;
+  generatingIdeas?: {
+    pending: boolean;
+    toastId?: string;
+  };
 }
 
 const ListView: React.FC<ListViewProps> = ({
   scriptIdeas,
   onEditIdea,
   onDeleteInitiate,
-  onGenerateScript
+  onGenerateScript,
+  generatingScripts = new Set(),
+  generatingIdeas = { pending: false }
 }) => {
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
 
@@ -40,6 +47,8 @@ const ListView: React.FC<ListViewProps> = ({
         <div className="space-y-4">
           {filteredIdeas.map(idea => {
             const stage = PIPELINE_STAGES.find(s => s.dbStatus === idea.status);
+            const isGeneratingScript = generatingScripts.has(idea.id);
+            const isGeneratingIdea = generatingIdeas.pending && idea.status === 'Idea Generation';
             const iconName = stage?.id === 'idea' ? 'PenLine' : 
                           stage?.id === 'generated' ? 'Sparkles' : 
                           stage?.id === 'reviewed' ? 'CheckCircle' : 'Clock';
@@ -88,15 +97,25 @@ const ListView: React.FC<ListViewProps> = ({
                     {/* Status Badge */}
                     {stage && (
                       <Badge 
-                        className={`${
-                          stage.id === 'idea' ? 'bg-green-50 text-green-600 border-green-200' : 
-                          stage.id === 'generated' ? 'bg-blue-50 text-blue-600 border-blue-200' : 
-                          stage.id === 'reviewed' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
-                          'bg-purple-50 text-purple-600 border-purple-200'
-                        } flex items-center gap-1 w-fit`}
+                        className={`${isGeneratingScript || isGeneratingIdea ? 'bg-blue-100 text-blue-700' : ''} 
+                          ${
+                            stage.id === 'idea' ? 'bg-green-50 text-green-600 border-green-200' : 
+                            stage.id === 'generated' ? 'bg-blue-50 text-blue-600 border-blue-200' : 
+                            stage.id === 'reviewed' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
+                            'bg-purple-50 text-purple-600 border-purple-200'
+                          } flex items-center gap-1 w-fit`}
                       >
-                        <IconRenderer iconName={iconName as any} className="h-3 w-3" />
-                        {stage.label}
+                        {isGeneratingScript || isGeneratingIdea ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            {isGeneratingScript ? 'Generating Script...' : 'Generating Idea...'}
+                          </>
+                        ) : (
+                          <>
+                            <IconRenderer iconName={iconName as any} className="h-3 w-3" />
+                            {stage.label}
+                          </>
+                        )}
                       </Badge>
                     )}
                   </div>
@@ -122,9 +141,14 @@ const ListView: React.FC<ListViewProps> = ({
                         size="sm" 
                         onClick={e => onGenerateScript(idea, e)} 
                         className="text-xs text-purple-600 hover:text-purple-800 hover:bg-purple-50 px-3"
+                        disabled={isGeneratingScript}
                       >
-                        <Wand2 className="h-3.5 w-3.5 mr-1.5" />
-                        Generate
+                        {isGeneratingScript ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        ) : (
+                          <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+                        )}
+                        {isGeneratingScript ? 'Generating...' : 'Generate Script'}
                       </Button>
                     ) : idea.generated_script_link ? (
                       <a 
