@@ -87,50 +87,80 @@ const Dashboard: React.FC = () => {
   // Get the query client for manual cache updates
   const queryClient = useQueryClient();
 
-  // Track items that are in process of generating
-  const [generatingItems, setGeneratingItems] = useState<Set<string>>(new Set());
+  // Track items that are generating scripts and ideas
+  const [generatingScripts, setGeneratingScripts] = useState<Set<string>>(new Set());
+  const [generatingIdeas, setGeneratingIdeas] = useState<Set<string>>(new Set());
 
   // Polling mechanism to check for updates on generating items
   useEffect(() => {
     // Don't poll if no items are generating
-    if (generatingItems.size === 0) return;
+    if (generatingScripts.size === 0 && generatingIdeas.size === 0) return;
     
-    console.log(`Polling for ${generatingItems.size} generating scripts`);
+    console.log(`Polling for ${generatingScripts.size} generating scripts and ${generatingIdeas.size} generating ideas`);
     
     // Function to check for updates
     const checkForUpdates = async () => {
       try {
-        // Get the latest data for all items that are generating
-        const { data, error } = await supabase
-          .from('video_generator_script_pipeline')
-          .select('*')
-          .in('id', Array.from(generatingItems));
-        
-        if (error) {
-          console.error('Error checking for updates:', error);
-          return;
-        }
-        
-        // Check for completed items
-        const completedItems = new Set<string>();
-        data?.forEach(item => {
-          if (item.generated_script_link) {
-            completedItems.add(item.id);
-            toast.success(`Script for "${item.title}" is now ready!`);
+        // For script updates
+        if (generatingScripts.size > 0) {
+          const { data: scriptData, error: scriptError } = await supabase
+            .from('video_generator_script_pipeline')
+            .select('*')
+            .in('id', Array.from(generatingScripts));
+          
+          if (scriptError) {
+            console.error('Error checking for script updates:', scriptError);
+            return;
           }
-        });
-        
-        // Remove completed items from tracking
-        if (completedItems.size > 0) {
-          setGeneratingItems(prev => {
-            const newSet = new Set(prev);
-            completedItems.forEach(id => newSet.delete(id));
-            return newSet;
+          
+          // Check for completed scripts
+          const completedScripts = new Set<string>();
+          scriptData?.forEach(item => {
+            if (item.generated_script_link) {
+              completedScripts.add(item.id);
+              toast.success(`Script for "${item.title}" is now ready!`);
+            }
           });
           
-          // Refresh the script ideas data
-          queryClient.invalidateQueries({ queryKey: ['scriptIdeas'] });
+          // Remove completed scripts from tracking
+          if (completedScripts.size > 0) {
+            setGeneratingScripts(prev => {
+              const newSet = new Set(prev);
+              completedScripts.forEach(id => newSet.delete(id));
+              return newSet;
+            });
+          }
         }
+
+        // For idea updates - check for new records with status "Idea Generation"
+        if (generatingIdeas.size > 0) {
+          const { data: ideaData, error: ideaError } = await supabase
+            .from('video_generator_script_pipeline')
+            .select('*')
+            .eq('status', 'Idea Generation')
+            .order('created_at', { ascending: false })
+            .limit(10); // Limit to recent records
+          
+          if (ideaError) {
+            console.error('Error checking for idea updates:', ideaError);
+            return;
+          }
+          
+          // Check for completed ideas
+          ideaData?.forEach(item => {
+            if (item.title && item.description) {
+              toast.success(`New idea "${item.title}" has been generated!`);
+              setGeneratingIdeas(prev => {
+                const newSet = new Set(prev);
+                newSet.delete('pending'); // Remove the pending flag
+                return newSet;
+              });
+            }
+          });
+        }
+        
+        // Refresh the script ideas data if any updates were found
+        queryClient.invalidateQueries({ queryKey: ['scriptIdeas'] });
       } catch (err) {
         console.error('Error in polling mechanism:', err);
       }
@@ -141,7 +171,7 @@ const Dashboard: React.FC = () => {
     
     // Cleanup function
     return () => clearInterval(intervalId);
-  }, [generatingItems, queryClient]);
+  }, [generatingScripts, generatingIdeas, queryClient]);
 
   // Function to send script idea data to webhook
   const sendToWebhook = async (idea: ScriptIdea) => {
@@ -232,8 +262,11 @@ const Dashboard: React.FC = () => {
           // Parse the payload
           const payload = JSON.parse(payloadString);
 
+          // Add a pending flag to indicate we're waiting for a new idea
+          setGeneratingIdeas(prev => new Set(prev).add('pending'));
+
           // Send the webhook request with all account details
-          await fetch(webhookUrl, {
+          const response = await fetch(webhookUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -241,10 +274,20 @@ const Dashboard: React.FC = () => {
             body: JSON.stringify(payload)
           });
 
+          if (!response.ok) {
+            throw new Error('Failed to send request to webhook');
+          }
+
           setGenerateDialogOpen(false); // Close the dialog
-          return 'Idea generation started';
+          return 'Idea generation started. You will be notified when it completes.';
         } catch (error) {
           console.error('Error triggering idea generation:', error);
+          // Remove the pending flag if there's an error
+          setGeneratingIdeas(prev => {
+            const newSet = new Set(prev);
+            newSet.delete('pending');
+            return newSet;
+          });
           throw new Error('Failed to start idea generation');
         }
       })(),
@@ -256,7 +299,7 @@ const Dashboard: React.FC = () => {
     );
   };
 
-  // Handle generating script with AI - modified to only update status
+  // Handle generating script with AI - modified to use new state
   const handleGenerateScript = async (idea: ScriptIdea, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent card click
 
@@ -267,8 +310,8 @@ const Dashboard: React.FC = () => {
         throw new Error('Failed to send data to webhook');
       }
 
-      // Add this item to the set of generating items
-      setGeneratingItems(prev => new Set(prev).add(idea.id));
+      // Add this item to the set of generating scripts
+      setGeneratingScripts(prev => new Set(prev).add(idea.id));
 
       // Only update the status to "Content Generated"
       await updateScriptIdea.mutateAsync({

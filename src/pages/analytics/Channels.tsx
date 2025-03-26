@@ -7,7 +7,9 @@ import {
   PlaySquare, 
   Eye, 
   TrendingUp,
-  CheckCircle2
+  CheckCircle2,
+  MapPin,
+  Trash2
 } from 'lucide-react';
 import {
   Table,
@@ -38,6 +40,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import { toast } from 'sonner';
 
 interface ChannelData {
   channel_id: string;
@@ -163,6 +166,32 @@ const ChannelsAnalytics: React.FC = () => {
     setSidebarOpen(true);
   };
 
+  // Add delete channel function
+  const handleDeleteChannel = async (channelId: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent row click
+
+    // Show confirmation toast
+    toast.promise(
+      (async () => {
+        const { error } = await supabase
+          .from('channels')
+          .delete()
+          .eq('channel_id', channelId);
+
+        if (error) throw error;
+
+        // Remove channel from local state
+        setChannels(prev => prev.filter(channel => channel.channel_id !== channelId));
+        return 'Channel deleted successfully';
+      })(),
+      {
+        loading: 'Deleting channel...',
+        success: (message) => message,
+        error: 'Failed to delete channel'
+      }
+    );
+  };
+
   return (
     <>
       <div className="flex flex-col h-[calc(100vh-theme(spacing.16))]">
@@ -222,8 +251,8 @@ const ChannelsAnalytics: React.FC = () => {
                     </TableHead>
                     <TableHead className="text-right whitespace-nowrap bg-background">
                       <div className="flex items-center justify-end gap-1">
-                        <TrendingUp className="h-3.5 w-3.5" />
-                        <span className="text-xs">Growth (3mo)</span>
+                        <MapPin className="h-3.5 w-3.5" />
+                        <span className="text-xs">Location</span>
                       </div>
                     </TableHead>
                     <TableHead className="text-right bg-background">Actions</TableHead>
@@ -289,8 +318,8 @@ const ChannelsAnalytics: React.FC = () => {
                         <TableCell className="text-right tabular-nums text-xs">
                           {channel.channel_total_views.toLocaleString()}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums text-xs">
-                          {channel.growth_3mo > 0 ? '+' : ''}{channel.growth_3mo.toLocaleString()}%
+                        <TableCell className="text-right text-xs">
+                          {channel.channel_location || 'Unknown'}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center justify-end gap-2">
@@ -314,6 +343,14 @@ const ChannelsAnalytics: React.FC = () => {
                               }}
                             >
                               <ExternalLink className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive hover:text-destructive"
+                              onClick={(e) => handleDeleteChannel(channel.channel_id, e)}
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </TableCell>

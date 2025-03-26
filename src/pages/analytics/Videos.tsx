@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LineChartIcon, ExternalLink, Eye, ThumbsUp, MessageSquare, Clock, BarChart } from 'lucide-react';
+import { LineChartIcon, ExternalLink, Eye, ThumbsUp, MessageSquare, Clock, BarChart, Trash2 } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -38,6 +38,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import { toast } from 'sonner';
 
 interface VideoData {
   id: string;
@@ -183,6 +184,31 @@ const VideosAnalytics: React.FC = () => {
     if (score >= 7) return 'text-green-500';
     if (score >= 4) return 'text-yellow-500';
     return 'text-red-500';
+  };
+
+  // Add delete video function
+  const handleDeleteVideo = async (videoId: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent row click
+
+    toast.promise(
+      (async () => {
+        const { error } = await supabase
+          .from('videos')
+          .delete()
+          .eq('video_id', videoId);
+
+        if (error) throw error;
+
+        // Remove video from local state
+        setVideos(prev => prev.filter(video => video.video_id !== videoId));
+        return 'Video deleted successfully';
+      })(),
+      {
+        loading: 'Deleting video...',
+        success: (message) => message,
+        error: 'Failed to delete video'
+      }
+    );
   };
 
   return (
@@ -335,6 +361,14 @@ const VideosAnalytics: React.FC = () => {
                               }}
                             >
                               <ExternalLink className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive hover:text-destructive"
+                              onClick={(e) => handleDeleteVideo(video.video_id, e)}
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </TableCell>
