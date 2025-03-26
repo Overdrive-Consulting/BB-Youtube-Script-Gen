@@ -125,7 +125,10 @@
   }
   
   .sidebar-item {
-    @apply flex items-center gap-3 px-3 py-2 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors;
+    @apply flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors duration-200;
+    @apply hover:bg-secondary hover:text-secondary-foreground;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+    margin: 0.5rem 0;
   }
   
   .sidebar-item.active {
@@ -134,7 +137,10 @@
 
   /* Add styles for collapsed sidebar items */
   .sidebar-item-collapsed {
-    @apply flex items-center justify-center p-2 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors;
+    @apply flex items-center justify-center p-3 rounded-md transition-colors duration-200;
+    @apply hover:bg-secondary hover:text-secondary-foreground;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+    margin: 0.75rem 0;
   }
   
   .sidebar-item-collapsed.active {
@@ -142,7 +148,10 @@
   }
   
   .sidebar-subitem {
-    @apply flex items-center px-3 py-2 text-sm rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors;
+    @apply flex items-center px-3 py-3 text-sm font-medium rounded-md transition-colors duration-200;
+    @apply text-muted-foreground hover:bg-secondary hover:text-secondary-foreground;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+    margin: 0.5rem 0;
   }
   
   .sidebar-subitem.active {
@@ -199,4 +208,75 @@
   padding: 0;
   margin: 0;
   text-align: left;
+}
+
+/* Sidebar Styles */
+.sidebar-item {
+  @apply flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors duration-200;
+  @apply hover:bg-secondary hover:text-secondary-foreground;
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+  margin: 0.5rem 0;
+}
+
+.sidebar-item-collapsed {
+  @apply flex items-center justify-center p-3 rounded-md transition-colors duration-200;
+  @apply hover:bg-secondary hover:text-secondary-foreground;
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+  margin: 0.75rem 0;
+}
+
+.sidebar-subitem {
+  @apply flex items-center px-3 py-3 text-sm font-medium rounded-md transition-colors duration-200;
+  @apply text-muted-foreground hover:bg-secondary hover:text-secondary-foreground;
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+  margin: 0.5rem 0;
+}
+
+/* Update spacing for submenu items in collapsed state */
+[data-collapsed="true"] .sidebar-subitem {
+  margin: 0.75rem 0;
+}
+
+/* Increase spacing in the navigation list */
+nav ul.space-y-1 {
+  @apply space-y-3;
+}
+
+/* Add spacing for submenu list */
+ul.pl-1.mt-1.space-y-1 {
+  @apply space-y-3 mt-3;
+}
+
+/* Add extra padding to the nav container */
+nav.sidebar-nav {
+  @apply py-6;
+}
+
+.active {
+  @apply bg-secondary text-secondary-foreground;
+}
+
+/* Smooth transitions for sidebar expansion/collapse */
+aside {
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Smooth transitions for content */
+.sidebar-item span,
+.sidebar-subitem span,
+h1 {
+  transition: opacity 0.2s ease-in-out;
+  opacity: 1;
+}
+
+[data-collapsed="true"] .sidebar-item span,
+[data-collapsed="true"] .sidebar-subitem span,
+[data-collapsed="true"] h1 {
+  opacity: 0;
+}
+
+/* Hover effect for submenu icons */
+.sidebar-item-collapsed:hover {
+  transform: scale(1.1);
+  transition: transform 0.2s ease-in-out;
 }

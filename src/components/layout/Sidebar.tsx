@@ -1,8 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutGrid, Link, Users, Settings, LogOut, ChevronLeft, ChevronRight, BarChart, ChevronDown } from 'lucide-react';
+import { LayoutGrid, Link, Users, Settings, LogOut, ChevronLeft, ChevronRight, BarChart, ChevronDown, LineChart, PieChart, BarChart2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+
+// Add icons for submenu items
+const analyticsSubItems = [
+  {
+    label: 'Overview',
+    path: '/analytics/overview',
+    icon: LineChart
+  },
+  {
+    label: 'Channels',
+    path: '/analytics/channels',
+    icon: PieChart
+  },
+  {
+    label: 'Videos',
+    path: '/analytics/videos',
+    icon: BarChart2
+  }
+];
 
 const navItems = [
   {
@@ -19,20 +38,7 @@ const navItems = [
     icon: BarChart,
     label: 'Analytics',
     path: '/analytics',
-    subItems: [
-      {
-        label: 'Overview',
-        path: '/analytics/overview'
-      },
-      {
-        label: 'Channels',
-        path: '/analytics/channels'
-      },
-      {
-        label: 'Videos',
-        path: '/analytics/videos'
-      }
-    ]
+    subItems: analyticsSubItems
   },
   {
     icon: Users,
@@ -48,26 +54,28 @@ const navItems = [
 
 // Create a sidebar context to manage the collapsed state
 export const SidebarContext = React.createContext({
-  collapsed: false,
+  collapsed: true, // Default to collapsed
   toggleSidebar: () => {},
 });
 
-export const useSidebar = () => React.useContext(SidebarContext);
+export const useSidebar = () => {
+  const context = React.useContext(SidebarContext);
+  if (!context) {
+    throw new Error('useSidebar must be used within a SidebarProvider');
+  }
+  return context;
+};
 
 const Sidebar: React.FC = () => {
   const location = useLocation();
-  const isDashboard = location.pathname === '/';
   const { signOut } = useAuth();
   
-  // Initialize collapsed state based on localStorage or default to collapsed for dashboard
-  const [collapsed, setCollapsed] = useState(() => {
-    const savedState = localStorage.getItem('sidebar-collapsed');
-    if (savedState !== null) {
-      return savedState === 'true';
-    }
-    return isDashboard; // Default to collapsed on dashboard
-  });
-
+  // Initialize collapsed state to true by default
+  const [collapsed, setCollapsed] = useState(true);
+  
+  // State to track hover
+  const [isHovered, setIsHovered] = useState(false);
+  
   // Track expanded submenu items
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
@@ -87,11 +95,6 @@ const Sidebar: React.FC = () => {
     return false;
   };
 
-  // Save collapsed state to localStorage when it changes
-  useEffect(() => {
-    localStorage.setItem('sidebar-collapsed', String(collapsed));
-  }, [collapsed]);
-
   const toggleSidebar = () => {
     setCollapsed(prev => !prev);
   };
@@ -102,28 +105,30 @@ const Sidebar: React.FC = () => {
   };
 
   return (
-    <SidebarContext.Provider value={{ collapsed, toggleSidebar }}>
+    <SidebarContext.Provider value={{ collapsed: collapsed && !isHovered, toggleSidebar }}>
       <aside 
         className={cn(
           "h-screen border-r border-border bg-sidebar flex flex-col overflow-hidden transition-all duration-300 ease-in-out",
-          collapsed ? "w-16" : "w-64"
+          (collapsed && !isHovered) ? "w-16" : "w-64"
         )}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
         <div className={cn(
           "p-4 flex items-center",
-          collapsed ? "justify-center" : "justify-between"
+          (collapsed && !isHovered) ? "justify-center" : "justify-between"
         )}>
-          {!collapsed && <h1 className="text-xl font-semibold text-foreground">Boring Business</h1>}
+          {(!collapsed || isHovered) && <h1 className="text-xl font-semibold text-foreground">Boring Business</h1>}
           <button 
             onClick={toggleSidebar}
             className="p-1 rounded-md hover:bg-secondary flex items-center justify-center"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={(collapsed && !isHovered) ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+            {(collapsed && !isHovered) ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
           </button>
         </div>
         
-        <nav className="flex-1 px-3 py-4">
+        <nav className="flex-1 px-3 py-4 sidebar-nav">
           <ul className="space-y-1">
             {navItems.map(item => (
               <li key={item.path} className={item.subItems ? "mb-2" : ""}>
@@ -132,16 +137,16 @@ const Sidebar: React.FC = () => {
                     <button
                       onClick={() => toggleSubmenu(item.path)}
                       className={cn(
-                        collapsed ? "sidebar-item-collapsed justify-center" : "sidebar-item justify-between",
+                        (collapsed && !isHovered) ? "sidebar-item-collapsed justify-center" : "sidebar-item justify-between",
                         isPathActive(item.path) && "active"
                       )}
-                      title={collapsed ? item.label : undefined}
+                      title={(collapsed && !isHovered) ? item.label : undefined}
                     >
                       <div className="flex items-center">
                         <item.icon className="h-5 w-5" />
-                        {!collapsed && <span className="ml-3">{item.label}</span>}
+                        {(!collapsed || isHovered) && <span className="ml-3">{item.label}</span>}
                       </div>
-                      {!collapsed && (
+                      {(!collapsed || isHovered) && (
                         <ChevronDown
                           className={cn(
                             "h-4 w-4 transition-transform",
@@ -152,18 +157,31 @@ const Sidebar: React.FC = () => {
                     </button>
                     
                     {/* Submenu items */}
-                    {(expandedItems.includes(item.path) || isPathActive(item.path)) && !collapsed && (
-                      <ul className="pl-10 mt-1 space-y-1">
+                    {(expandedItems.includes(item.path) || isPathActive(item.path)) && (
+                      <ul className={cn(
+                        "pl-2 mt-1 space-y-1",
+                        (collapsed && !isHovered) ? "items-center" : ""
+                      )}>
                         {item.subItems.map(subItem => (
                           <li key={subItem.path}>
                             <NavLink
                               to={subItem.path}
                               className={({isActive}) => cn(
-                                "sidebar-subitem",
+                                (collapsed && !isHovered) 
+                                  ? "flex items-center justify-center p-2 rounded-md hover:bg-secondary" 
+                                  : "sidebar-subitem",
                                 isActive && "active"
                               )}
+                              title={(collapsed && !isHovered) ? subItem.label : undefined}
                             >
-                              {subItem.label}
+                              {(collapsed && !isHovered) ? (
+                                <subItem.icon className="h-5 w-5" />
+                              ) : (
+                                <>
+                                  <subItem.icon className="h-5 w-5 mr-2" />
+                                  {subItem.label}
+                                </>
+                              )}
                             </NavLink>
                           </li>
                         ))}
@@ -174,13 +192,13 @@ const Sidebar: React.FC = () => {
                   <NavLink 
                     to={item.path} 
                     className={({isActive}) => cn(
-                      collapsed ? "sidebar-item-collapsed" : "sidebar-item", 
+                      (collapsed && !isHovered) ? "sidebar-item-collapsed" : "sidebar-item", 
                       isActive && "active"
                     )}
-                    title={collapsed ? item.label : undefined}
+                    title={(collapsed && !isHovered) ? item.label : undefined}
                   >
                     <item.icon className="h-5 w-5" />
-                    {!collapsed && <span>{item.label}</span>}
+                    {(!collapsed || isHovered) && <span className="ml-3">{item.label}</span>}
                   </NavLink>
                 )}
               </li>
@@ -190,18 +208,18 @@ const Sidebar: React.FC = () => {
         
         <div className={cn(
           "border-t border-border mt-auto p-4",
-          collapsed && "flex justify-center"
+          (collapsed && !isHovered) && "flex justify-center"
         )}>
           <button 
             onClick={handleLogout}
             className={cn(
-              collapsed ? "sidebar-item-collapsed" : "sidebar-item",
+              (collapsed && !isHovered) ? "sidebar-item-collapsed" : "sidebar-item",
               "text-red-500 hover:bg-red-50 hover:text-red-600"
             )}
-            title={collapsed ? "Log Out" : undefined}
+            title={(collapsed && !isHovered) ? "Log Out" : undefined}
           >
             <LogOut className="h-5 w-5" />
-            {!collapsed && <span>Log Out</span>}
+            {(!collapsed || isHovered) && <span className="ml-3">Log Out</span>}
           </button>
         </div>
       </aside>
