@@ -9,7 +9,8 @@ import {
   TrendingUp,
   CheckCircle2,
   MapPin,
-  Trash2
+  Trash2,
+  Clock
 } from 'lucide-react';
 import {
   Table,
@@ -73,7 +74,7 @@ const ChannelsAnalytics: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedChannel, setSelectedChannel] = useState<ChannelData | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sortBy, setSortBy] = useState<string>('subscribers');
+  const [sortBy, setSortBy] = useState<string>('date_scraped');
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
@@ -85,7 +86,7 @@ const ChannelsAnalytics: React.FC = () => {
       const { data, error } = await supabase
         .from('channels')
         .select('*')
-        .order('subscribers', { ascending: false });
+        .order('last_scraped_date', { ascending: false });
 
       if (error) throw error;
       
@@ -122,15 +123,19 @@ const ChannelsAnalytics: React.FC = () => {
           return b.channel_total_views - a.channel_total_views;
         case 'growth':
           return b.growth_3mo - a.growth_3mo;
-        default:
+        case 'date_scraped':
+          return new Date(b.last_scraped_date).getTime() - new Date(a.last_scraped_date).getTime();
+        case 'date':
           return new Date(b.date_joined).getTime() - new Date(a.date_joined).getTime();
+        default:
+          return new Date(b.last_scraped_date).getTime() - new Date(a.last_scraped_date).getTime();
       }
     });
   };
 
   useEffect(() => {
-    setChannels(sortChannels(channels));
-  }, [sortBy]);
+    setChannels(sortChannels([...channels]));
+  }, [sortBy, channels]);
 
   // Calculate pagination
   const totalPages = Math.ceil(channels.length / ITEMS_PER_PAGE);
@@ -213,6 +218,7 @@ const ChannelsAnalytics: React.FC = () => {
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="date_scraped">Date Scraped</SelectItem>
                   <SelectItem value="subscribers">Most Subscribers</SelectItem>
                   <SelectItem value="videos">Most Videos</SelectItem>
                   <SelectItem value="views">Most Views</SelectItem>
@@ -255,6 +261,12 @@ const ChannelsAnalytics: React.FC = () => {
                         <span className="text-xs">Location</span>
                       </div>
                     </TableHead>
+                    <TableHead className="text-right whitespace-nowrap bg-background">
+                      <div className="flex items-center justify-end gap-1">
+                        <Clock className="h-3.5 w-3.5" />
+                        <span className="text-xs">Scraped</span>
+                      </div>
+                    </TableHead>
                     <TableHead className="text-right bg-background">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -268,6 +280,8 @@ const ChannelsAnalytics: React.FC = () => {
                             <Skeleton className="h-4 w-[200px]" />
                           </div>
                         </TableCell>
+                        <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
@@ -320,6 +334,9 @@ const ChannelsAnalytics: React.FC = () => {
                         </TableCell>
                         <TableCell className="text-right text-xs">
                           {channel.channel_location || 'Unknown'}
+                        </TableCell>
+                        <TableCell className="text-right text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(channel.last_scraped_date), { addSuffix: true })}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center justify-end gap-2">

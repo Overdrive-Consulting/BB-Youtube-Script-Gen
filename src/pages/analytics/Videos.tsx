@@ -69,7 +69,7 @@ const VideosAnalytics: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedVideo, setSelectedVideo] = useState<VideoData | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sortBy, setSortBy] = useState<string>('date');
+  const [sortBy, setSortBy] = useState<string>('date_scraped');
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
@@ -81,7 +81,7 @@ const VideosAnalytics: React.FC = () => {
       const { data, error } = await supabase
         .from('videos')
         .select('*')
-        .order('date_published', { ascending: false });
+        .order('last_scraped_at', { ascending: false });
 
       if (error) throw error;
       
@@ -116,15 +116,19 @@ const VideosAnalytics: React.FC = () => {
           return b.comments_count - a.comments_count;
         case 'impressions':
           return b.impressions - a.impressions;
-        default:
+        case 'date_scraped':
+          return new Date(b.last_scraped_at).getTime() - new Date(a.last_scraped_at).getTime();
+        case 'date':
           return new Date(b.date_published).getTime() - new Date(a.date_published).getTime();
+        default:
+          return new Date(b.last_scraped_at).getTime() - new Date(a.last_scraped_at).getTime();
       }
     });
   };
 
   useEffect(() => {
-    setVideos(sortVideos(videos));
-  }, [sortBy]);
+    setVideos(sortVideos([...videos]));
+  }, [sortBy, videos]);
 
   // Calculate pagination
   const totalPages = Math.ceil(videos.length / ITEMS_PER_PAGE);
@@ -232,6 +236,7 @@ const VideosAnalytics: React.FC = () => {
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="date_scraped">Date Scraped</SelectItem>
                   <SelectItem value="date">Date Published</SelectItem>
                   <SelectItem value="views">Most Viewed</SelectItem>
                   <SelectItem value="likes">Most Liked</SelectItem>
@@ -276,6 +281,12 @@ const VideosAnalytics: React.FC = () => {
                         <span className="text-xs">Impressions</span>
                       </div>
                     </TableHead>
+                    <TableHead className="text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1">
+                        <Clock className="h-3.5 w-3.5" />
+                        <span className="text-xs">Scraped</span>
+                      </div>
+                    </TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -289,6 +300,7 @@ const VideosAnalytics: React.FC = () => {
                             <Skeleton className="h-4 w-[200px]" />
                           </div>
                         </TableCell>
+                        <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
@@ -338,6 +350,9 @@ const VideosAnalytics: React.FC = () => {
                         </TableCell>
                         <TableCell className="text-right tabular-nums text-xs">
                           {video.impressions.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(video.last_scraped_at), { addSuffix: true })}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center justify-end gap-2">
